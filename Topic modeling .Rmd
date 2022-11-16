@@ -1,0 +1,137 @@
+---
+title: "Topic Modeling"
+author: "Hui Xiong & Kaipeng Wu"
+date: '2022-11-15'
+output: html_document
+---
+
+```{r}
+library(tidyverse)
+library(tidytext)
+library(janeaustenr)
+library(stringr)
+library(ggplot2)
+library(topicmodels)
+library(NLP)
+IMDB.Dataset <- read.csv("C:/Users/kw482/Desktop/BU/615/top/IMDB Dataset.csv")
+IMDB <- tibble(IMDB.Dataset)
+
+IMDB <- IMDB  %>%  mutate(docs = c(1:length(IMDB$review)))
+
+data(stop_words)
+stop_words <- rbind(stop_words,c("br","Smart"))
+```
+
+#check the if words is uppercase
+```{r}
+upcheck <- function(x){
+  y <- toupper(x)
+  x == y
+}
+```
+
+#unnest the review to words
+```{r}
+book_words <- IMDB %>% 
+  unnest_tokens(word, review,to_lower = F)
+```
+
+#filter all Uppercase words
+```{r}
+tidy_test <- book_words %>%filter(upcheck(book_words$word) == T)
+tidy_test <- tidy_test %>% 
+  unnest_tokens(word,word)
+```
+
+#attatch stop_words dataset
+```{r}
+data(stop_words)
+stop_word <-select(stop_words,word)
+stop_word1 <- c(1:1000)
+stop_word1 <- as.data.frame(stop_word1) %>% rename(word = stop_word1)
+stop_word2 <- c("tv","dvd","2001")
+stop_word2 <- as.data.frame(stop_word2) %>% rename(word = stop_word2)
+
+stop_word <- rbind.data.frame(stop_word,stop_word1,stop_word2)
+
+```
+
+#anti join the stop words
+```{r}
+tidy_books <- tidy_test %>%
+  anti_join(stop_word)
+
+test_tib <- tidy_books %>% count(word, sort = TRUE) 
+```
+
+In order to do the analysis, the Uppercase words need to be changed to lowercase because the computer will report lowercase and uppercase into different letters. The stop word need to be removed because we do not need to analysis them.
+
+#grapsh
+```{r}
+tidy_books %>%
+  count(word, sort = TRUE) %>%
+  filter(n > 200) %>%
+  mutate(word = reorder(word, n)) %>%
+  ggplot(aes(n, word)) +
+  geom_col() +
+  labs(y = NULL)
+```
+
+The most common word use is "ii".Also, the different years also existed a lot here.The country name like "u.s","uk","usa",etc and the association name like "bbc","fbi","cia",etc shows a lot in this book.
+
+##About punctuation
+#unnest the review to sentences
+```{r}
+book_words <- IMDB %>% 
+  unnest_tokens(sentence, review, token = "sentences")
+```
+
+#count frequency of punctuation
+```{r}
+devtools::install_github("Amherst-Statistics/katherinemansfieldr")
+library(katherinemansfieldr)
+char <- extract_punct(book_words$sentence)
+puncfreq <- charfreq(char, c('...', '?','!','"'), punctuation = TRUE)
+```
+
+#graph
+```{r}
+puncfreq %>%
+  ggplot(aes(
+    character, freq)) +
+  geom_col() +
+  labs(y = NULL)
+```
+
+The author preferred to us ellipsis as the character and did not like to use the question mark as the graph shows above.It means the book have many absence of words and there are fewer questions.
+
+###  LDA
+```{r}
+imdb_dtm <- IMDB %>%
+  unnest_tokens(word, review) %>%
+  anti_join(stop_words)%>%
+  count(docs, word) %>%
+  cast_dtm(docs, word, n)
+
+
+ap_lda <- LDA(imdb_dtm, k = 10, control = list(seed = 1234))
+
+ap_topics <- tidy(ap_lda, matrix = "beta")
+
+ap_top_terms <- ap_topics %>%
+  group_by(topic) %>%
+  slice_max(beta, n = 10) %>% 
+  ungroup() %>%
+  arrange(topic, -beta)
+
+ap_top_terms %>%
+  mutate(term = reorder_within(term, beta, topic)) %>%
+  ggplot(aes(beta, term, fill = factor(topic))) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~ topic, scales = "free") +
+  scale_y_reordered()
+```
+
+By divided by different topics, "br","movie","film" existed the most in different topics.The original type and plural type of words may both existed in this analysis like "movie", "movies" and "character", "characters".I believe the the plural type should be counted into original type. But now I do not have enough time to do that.
+
+In conclusion, the year, country name,and association name existed a lot in the whole text.The author preferred to us ellipsis as the character and did not like to use the question mark. The original type and plural type of words may both existed in this analysis which may cause the error of analysis.
